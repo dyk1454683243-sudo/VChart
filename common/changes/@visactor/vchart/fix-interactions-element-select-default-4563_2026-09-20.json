@@ -1,0 +1,10 @@
+{
+  "changes": [
+    {
+      "packageName": "@visactor/vchart",
+      "comment": "fix: skip default single-select when spec.interactions already registers element-select, so isMultiple multi-select works",
+      "type": "patch"
+    }
+  ],
+  "packageName": "@visactor/vchart"
+}

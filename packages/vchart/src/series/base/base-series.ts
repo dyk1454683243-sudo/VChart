@@ -956,6 +956,14 @@ export abstract class BaseSeries<T extends ISeriesSpec> extends BaseModel<T> imp
     const { interactions } = this._spec;
     const res = this._parseDefaultInteractionConfig(mainMarks);
 
+    // Custom element-select is not isEqual to default select, so both would stay live and fight.
+    if (interactions?.some(interaction => interaction.type === TRIGGER_TYPE_ENUM.ELEMENT_SELECT)) {
+      const defaultSelectIndex = res.findIndex(item => item.trigger.type === TRIGGER_TYPE_ENUM.ELEMENT_SELECT);
+      if (defaultSelectIndex >= 0) {
+        res.splice(defaultSelectIndex, 1);
+      }
+    }
+
     if (interactions && interactions.length) {
       interactions.forEach(interaction => {
         const marks: IMark[] = filterMarksOfInteraction(interaction, this.getMarks());
