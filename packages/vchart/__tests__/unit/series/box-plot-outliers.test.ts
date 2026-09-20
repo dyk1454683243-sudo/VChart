@@ -1,11 +1,14 @@
 import { DataSet } from '@visactor/vdataset';
 import { EventDispatcher } from '../../../src/event/event-dispatcher';
 import { GlobalScale } from '../../../src/scale/global-scale';
+import VChart from '../../../src';
 import { BoxPlotChart, registerBoxplotChart } from '../../../src/chart/box-plot';
 import { BoxPlotSeries } from '../../../src/series/box-plot/box-plot';
 import { BOX_PLOT_OUTLIER_VALUE_FIELD } from '../../../src/constant/box-plot';
+import { SeriesMarkNameEnum } from '../../../src/series/interface/type';
 import { getTestCompiler } from '../../util/factory/compiler';
 import { getTheme, initChartDataSet, seriesOption } from '../../util/context';
+import { createDiv, removeDom } from '../../util/dom';
 
 registerBoxplotChart();
 
@@ -195,5 +198,76 @@ describe('boxPlot outliersField after empty-init updateData', () => {
       min: 12.01,
       max: 14.03
     });
+  });
+});
+
+const describeRender = typeof document === 'undefined' ? describe.skip : describe;
+
+const createIssueSpec = (values?: Record<string, unknown>[]) =>
+  ({
+    type: 'boxPlot',
+    width: 500,
+    height: 400,
+    data: values
+      ? [{ id: 'boxPlot', values }]
+      : [
+          {
+            id: 'boxPlot'
+          }
+        ],
+    xField: 'x',
+    minField: 'y1',
+    q1Field: 'y2',
+    medianField: 'y3',
+    q3Field: 'y4',
+    maxField: 'y5',
+    outliersField: 'y6',
+    direction: 'vertical',
+    animation: false
+  } as any);
+
+const getOutlierGraphics = (chart: VChart) => {
+  const series = chart.getChart()?.getAllSeries()[0] as any;
+  const outlierMark = series?.getMarks()?.find((mark: { name?: string }) => mark.name === SeriesMarkNameEnum.outlier);
+  return {
+    series,
+    graphics: outlierMark?.getGraphics?.() ?? []
+  };
+};
+
+describeRender('VChart boxPlot outliersField updateDataSync', () => {
+  let dom: HTMLElement;
+  let chart: VChart;
+
+  beforeEach(() => {
+    dom = createDiv();
+    dom.style.width = '500px';
+    dom.style.height = '400px';
+  });
+
+  afterEach(() => {
+    chart?.release();
+    removeDom(dom);
+  });
+
+  test('renders outlier points after updateDataSync from empty data', () => {
+    chart = new VChart(createIssueSpec(), { dom, animation: false });
+    chart.renderSync();
+    expect(getFoldedOutlierValues(getOutlierGraphics(chart).series)).toEqual([]);
+
+    chart.updateDataSync('boxPlot', filledValues);
+
+    const { series, graphics } = getOutlierGraphics(chart);
+    expect(getFoldedOutlierValues(series)).toEqual([12.01, 12.02, 14.03]);
+    expect(graphics.length).toBeGreaterThanOrEqual(3);
+  });
+
+  test('non-empty init with outliersField still renders outlier points', () => {
+    chart = new VChart(createIssueSpec(filledValues), { dom, animation: false });
+    chart.renderSync();
+
+    const { series, graphics } = getOutlierGraphics(chart);
+    expect(getFoldedOutlierValues(series)).toEqual([12.01, 12.02, 14.03]);
+    expect(graphics.length).toBeGreaterThanOrEqual(3);
   });
 });

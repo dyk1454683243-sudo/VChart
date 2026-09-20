@@ -51,11 +51,9 @@ describe('box plot transform options', () => {
       }
     );
 
-    expect(
-      rows
-        .map(row => row[BOX_PLOT_OUTLIER_VALUE_FIELD])
-        .filter(value => typeof value === 'number')
-    ).toEqual([12.01, 12.02, 14.03]);
+    expect(rows.map(row => row[BOX_PLOT_OUTLIER_VALUE_FIELD]).filter(value => typeof value === 'number')).toEqual([
+      12.01, 12.02, 14.03
+    ]);
     expect(rows[0]).toMatchObject({ [BOX_PLOT_OUTLIER_VALUE_FIELD]: 12.01, x: 'Sub-Saharan Africa' });
   });
 });
