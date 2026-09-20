@@ -21,9 +21,9 @@ class TestPieSeries extends PieSeries<IPieSeriesSpec> {
 }
 
 const dummyEvent = {
-  on: () => undefined,
-  off: () => undefined,
-  emit: () => undefined
+  on: (): void => undefined,
+  off: (): void => undefined,
+  emit: (): void => undefined
 };
 
 function createPieSeries(spec: Partial<IPieSeriesSpec> = {}) {
@@ -59,22 +59,24 @@ function getSelectTriggers(series: PieSeries<IPieSeriesSpec>) {
 }
 
 function createGraphic(mark: IMark): IMarkGraphic {
-  return {
+  const graphic = {
     context: { markId: mark.id },
     currentStates: [] as string[],
     hasState(state: string) {
-      return this.currentStates.includes(state);
+      return graphic.currentStates.includes(state);
     },
     setStates(states?: string[] | null) {
-      this.currentStates = states ?? [];
+      graphic.currentStates = states ?? [];
     }
-  } as unknown as IMarkGraphic;
+  };
+  return graphic as unknown as IMarkGraphic;
 }
 
-function startSelects(
-  selectTriggers: ReturnType<typeof getSelectTriggers>,
-  graphics: IMarkGraphic[]
-) {
+function getIsMultiple(trigger: ReturnType<PieSeries<IPieSeriesSpec>['getInteractionTriggers']>[number]['trigger']) {
+  return (trigger as { isMultiple?: boolean }).isMultiple;
+}
+
+function startSelects(selectTriggers: ReturnType<typeof getSelectTriggers>, graphics: IMarkGraphic[]) {
   const instances = selectTriggers.map(({ trigger, marks }) => {
     const interaction = new Interaction();
     const instance = new ElementSelect({
@@ -108,7 +110,7 @@ describe('element-select vs default select', () => {
     const selectTriggers = getSelectTriggers(series);
 
     expect(selectTriggers).toHaveLength(1);
-    expect(selectTriggers[0].trigger.isMultiple).toBe(true);
+    expect(getIsMultiple(selectTriggers[0].trigger)).toBe(true);
     expect(triggers.some(item => item.trigger.type === TRIGGER_TYPE_ENUM.DIMENSION_HOVER)).toBe(true);
     expect(triggers.some(item => item.trigger.type === TRIGGER_TYPE_ENUM.ELEMENT_HIGHLIGHT)).toBe(true);
 
@@ -123,7 +125,7 @@ describe('element-select vs default select', () => {
     const selectTriggers = getSelectTriggers(series);
 
     expect(selectTriggers).toHaveLength(1);
-    expect(selectTriggers[0].trigger.isMultiple).toBe(false);
+    expect(getIsMultiple(selectTriggers[0].trigger)).toBe(false);
 
     const mark = selectTriggers[0].marks[0];
     const statedLists = startSelects(selectTriggers, [createGraphic(mark), createGraphic(mark)]);
@@ -140,7 +142,7 @@ describe('element-select vs default select', () => {
     const selectTriggers = getSelectTriggers(series);
 
     expect(selectTriggers).toHaveLength(1);
-    expect(selectTriggers[0].trigger.isMultiple).toBe(true);
+    expect(getIsMultiple(selectTriggers[0].trigger)).toBe(true);
 
     const mark = selectTriggers[0].marks[0];
     const statedLists = startSelects(selectTriggers, [createGraphic(mark), createGraphic(mark)]);
