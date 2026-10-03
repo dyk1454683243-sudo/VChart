@@ -311,7 +311,8 @@ export class Interaction implements IInteraction {
     trigger: ITrigger,
     statedGraphics: IMarkGraphic[],
     state: string,
-    reverseState: string
+    reverseState: string,
+    keepGraphics?: Set<IMarkGraphic>
   ) {
     const marks = this._marksForReverseState(trigger);
     const markIdByState = trigger.getMarkIdByState();
@@ -333,6 +334,11 @@ export class Interaction implements IInteraction {
               removeGraphicState(g, reverseState, hasAnimation);
             }
             addGraphicState(g, state, true, hasAnimation);
+          }
+        } else if (keepGraphics?.has(g)) {
+          // 同一次 setSelected 里由另一个拆分触发器选中，不能在这里打成反选。
+          if (hasReverse && graphicHasState(g, reverseState)) {
+            removeGraphicState(g, reverseState, hasAnimation);
           }
         } else if (hasReverse) {
           if (graphicHasState(g, state)) {
@@ -441,19 +447,151 @@ export class Interaction implements IInteraction {
     const triggers = this._triggerMapByState.get(stateValue);
 
     if (triggers && triggers.length) {
-      triggers.forEach(t => {
-        const newStatedGraphics = markGraphics.filter(mg => {
-          return t.getMarks().some(m => {
-            const graphics = m && m.getGraphics();
+      if (this._hasSplitElementSelect(triggers)) {
+        this._updateSplitTriggerGraphics(triggers, markGraphics);
+        return;
+      }
 
-            return graphics && graphics.includes(mg);
-          });
-        });
+      triggers.forEach(t => {
+        const newStatedGraphics = this._graphicsOnTriggerMarks(t, markGraphics);
 
         this.updateStates(t, newStatedGraphics, this.getStatedGraphics(t), t.getStartState(), t.getResetState());
 
         this.setStatedGraphics(t, newStatedGraphics);
       });
     }
+  }
+
+  private _graphicsOnTriggerMarks(trigger: ITrigger, markGraphics: IMarkGraphic[]) {
+    return markGraphics.filter(mg => {
+      return trigger.getMarks().some(m => {
+        const graphics = m && m.getGraphics();
+
+        return graphics && graphics.includes(mg);
+      });
+    });
+  }
+
+  /**
+   * 同一状态下至少有两个 element-select，且图元范围有交集（拆开的 line / point）。
+   * 柱线组合图里互不重叠的系列不走这条路径。
+   */
+  private _hasSplitElementSelect(triggers: ITrigger[]) {
+    let elementSelectCount = 0;
+    for (let i = 0; i < triggers.length; i++) {
+      if (triggers[i]?.type === TRIGGER_TYPE_ENUM.ELEMENT_SELECT) {
+        elementSelectCount++;
+      }
+    }
+    if (elementSelectCount < 2) {
+      return false;
+    }
+
+    for (let i = 0; i < triggers.length; i++) {
+      const trigger = triggers[i];
+      if (trigger?.type !== TRIGGER_TYPE_ENUM.ELEMENT_SELECT) {
+        continue;
+      }
+      const peers = this._peerElementSelects(trigger);
+      for (let j = 0; j < peers.length; j++) {
+        if (triggers.includes(peers[j])) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private _peerSelectGroup(trigger: ITrigger, pool: Set<ITrigger>) {
+    const group: ITrigger[] = [];
+    const seen = new Set<ITrigger>();
+    const queue: ITrigger[] = [trigger];
+
+    while (queue.length) {
+      const current = queue.pop();
+      if (!current || seen.has(current) || !pool.has(current)) {
+        continue;
+      }
+      seen.add(current);
+      group.push(current);
+      this._peerElementSelects(current).forEach(peer => {
+        if (!seen.has(peer)) {
+          queue.push(peer);
+        }
+      });
+    }
+
+    return group;
+  }
+
+  /**
+   * setSelected 一次命中拆开的多种图元时，整批是同一份目标。
+   * 逐个触发器走互斥释放会把前一个刚选中的图元清掉，并打成 selected_reverse。
+   */
+  private _updateSplitTriggerGraphics(triggers: ITrigger[], markGraphics: IMarkGraphic[]) {
+    const graphicsByTrigger = new Map<ITrigger, IMarkGraphic[]>();
+    triggers.forEach(trigger => {
+      graphicsByTrigger.set(trigger, this._graphicsOnTriggerMarks(trigger, markGraphics));
+    });
+
+    const consumed = new Set<ITrigger>();
+    const pool = new Set(triggers);
+
+    triggers.forEach(trigger => {
+      if (consumed.has(trigger)) {
+        return;
+      }
+
+      const group = this._peerSelectGroup(trigger, pool);
+      const assignments = group.map(item => ({
+        trigger: item,
+        graphics: graphicsByTrigger.get(item) ?? []
+      }));
+      const hasBatchTarget = assignments.some(item => item.graphics.length);
+
+      if (group.length > 1 && hasBatchTarget) {
+        group.forEach(item => consumed.add(item));
+        this._updateSplitSelectBatch(assignments);
+        return;
+      }
+
+      consumed.add(trigger);
+      const graphics = graphicsByTrigger.get(trigger) ?? [];
+      this.updateStates(
+        trigger,
+        graphics,
+        this.getStatedGraphics(trigger),
+        trigger.getStartState(),
+        trigger.getResetState()
+      );
+      this.setStatedGraphics(trigger, graphics);
+    });
+  }
+
+  private _updateSplitSelectBatch(assignments: { trigger: ITrigger; graphics: IMarkGraphic[] }[]) {
+    const keep = new Set<IMarkGraphic>();
+    assignments.forEach(({ graphics }) => {
+      graphics.forEach(graphic => {
+        if (graphic) {
+          keep.add(graphic);
+        }
+      });
+    });
+
+    assignments.forEach(({ trigger, graphics }) => {
+      const state = trigger.getStartState();
+      const prev = this.getStatedGraphics(trigger);
+      if (state && prev?.length) {
+        const markById = this._getMarkById(trigger);
+        prev.forEach(graphic => {
+          if (!graphic || keep.has(graphic) || !graphicHasState(graphic, state)) {
+            return;
+          }
+          removeGraphicState(graphic, state, this._hasAnimationByGraphicState(graphic, markById));
+        });
+      }
+      this.addBothStateOfGraphics(trigger, graphics, state, trigger.getResetState(), keep);
+      this.setStatedGraphics(trigger, graphics);
+    });
   }
 }

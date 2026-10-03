@@ -671,6 +671,75 @@ describe('element-select vs default select', () => {
     expect(interaction.getStatedGraphics(pointTrigger)).toEqual([points[0]]);
   });
 
+  test('setSelected batch keeps both line and point selected across split triggers', () => {
+    const { interaction, pointTrigger, lineTrigger, lines, points } = bindLinePointSelects([
+      {
+        type: 'element-select',
+        markNames: ['line']
+      }
+    ]);
+
+    interaction.updateStateOfGraphics('selected', [lines[0], points[0]]);
+
+    expect(selectionOf(lines[0])).toEqual(['selected']);
+    expect(selectionOf(points[0])).toEqual(['selected']);
+    expect(selectionOf(lines[1])).toEqual(['selected_reverse']);
+    expect(selectionOf(points[1])).toEqual(['selected_reverse']);
+    expect(interaction.getStatedGraphics(lineTrigger)).toEqual([lines[0]]);
+    expect(interaction.getStatedGraphics(pointTrigger)).toEqual([points[0]]);
+
+    interaction.updateStateOfGraphics('selected', [lines[1], points[1]]);
+
+    expect(selectionOf(lines[1])).toEqual(['selected']);
+    expect(selectionOf(points[1])).toEqual(['selected']);
+    expect(selectionOf(lines[0])).toEqual(['selected_reverse']);
+    expect(selectionOf(points[0])).toEqual(['selected_reverse']);
+    expect(interaction.getStatedGraphics(lineTrigger)).toEqual([lines[1]]);
+    expect(interaction.getStatedGraphics(pointTrigger)).toEqual([points[1]]);
+
+    interaction.updateStateOfGraphics('selected', [lines[0]]);
+
+    expect(selectionOf(lines[0])).toEqual(['selected']);
+    expect(selectionOf(lines[1])).toEqual(['selected_reverse']);
+    expect(selectionOf(points[0])).toEqual(['selected_reverse']);
+    expect(selectionOf(points[1])).toEqual(['selected_reverse']);
+    expect(interaction.getStatedGraphics(lineTrigger)).toEqual([lines[0]]);
+    expect(interaction.getStatedGraphics(pointTrigger) ?? []).toEqual([]);
+
+    pointTrigger.start(undefined);
+    [...points, ...lines].forEach(graphic => {
+      expect(selectionOf(graphic)).toEqual([]);
+    });
+    expect(interaction.getStatedGraphics(pointTrigger) ?? []).toEqual([]);
+    expect(interaction.getStatedGraphics(lineTrigger) ?? []).toEqual([]);
+  });
+
+  test('default select setSelected still selects line and point together', () => {
+    const series = createCartesianSeries(LineSeries, {
+      type: 'line',
+      ...lineAndPointSelectStyles
+    });
+    const selectTriggers = getSelectTriggers(series);
+    expect(selectTriggers).toHaveLength(1);
+
+    const interaction = new Interaction();
+    const trigger = createElementSelect(selectTriggers[0], interaction, createSelectEvent());
+    interaction.addTrigger(trigger);
+
+    const line = selectTriggers[0].marks.find(mark => mark.name === 'line');
+    const point = selectTriggers[0].marks.find(mark => mark.name === 'point');
+    const lines = attachGraphics(line, 2);
+    const points = attachGraphics(point, 2);
+
+    interaction.updateStateOfGraphics('selected', [lines[0], points[0]]);
+
+    expect(selectionOf(lines[0])).toEqual(['selected']);
+    expect(selectionOf(points[0])).toEqual(['selected']);
+    expect(selectionOf(lines[1])).toEqual(['selected_reverse']);
+    expect(selectionOf(points[1])).toEqual(['selected_reverse']);
+    expect(interaction.getStatedGraphics(trigger)).toEqual([lines[0], points[0]]);
+  });
+
   test('partial multiple line select still accumulates across line clicks', () => {
     const { event, customSelect, lines, points } = bindLinePointSelects([
       {
